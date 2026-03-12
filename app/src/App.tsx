@@ -37,6 +37,11 @@ export default function App() {
       window.pty.write(data);
     });
 
+    // Debug: verify context capture
+    window.pty.onContextReady((ctx) => {
+      console.log('Context captured:', ctx);
+    });
+
     // Handle resize
     window.addEventListener("resize", () => {
       fitAddon.fit();
