@@ -1,60 +1,202 @@
-import { useEffect, useRef } from "react";
-import { Terminal } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
-import "xterm/css/xterm.css";
+import { useEffect, useRef, useState } from 'react'
+import { Terminal } from 'xterm'
+import { FitAddon } from 'xterm-addon-fit'
+import 'xterm/css/xterm.css'
+
+interface AiResult {
+  explanation: string
+  security_implications: string
+  next_steps: string
+}
+
+interface ScriptResult {
+  script: string
+  description: string
+  warning: string
+}
+
+type PanelContent =
+  | { type: 'idle' }
+  | { type: 'loading' }
+  | { type: 'explanation'; data: AiResult; command: string }
+  | { type: 'script'; data: ScriptResult; request: string }
+  | { type: 'error'; message: string }
+
+function useTypewriter(text: string, speed = 18) {
+  const [displayed, setDisplayed] = useState('')
+  useEffect(() => {
+    setDisplayed('')
+    if (!text) return
+    let i = 0
+    const interval = setInterval(() => {
+      i++
+      setDisplayed(text.slice(0, i))
+      if (i >= text.length) clearInterval(interval)
+    }, speed)
+    return () => clearInterval(interval)
+  }, [text, speed])
+  return displayed
+}
 
 export default function App() {
-  const terminalRef = useRef<HTMLDivElement | null>(null);
+  const termRef = useRef<HTMLDivElement>(null)
+  const xtermRef = useRef<Terminal | null>(null)
+  const fitRef = useRef<FitAddon | null>(null)
+  const [panel, setPanel] = useState<PanelContent>({ type: 'idle' })
 
   useEffect(() => {
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
-      theme: {
-        background: "#0b0f14",
-      },
-      scrollback: 5000,
-    });
+      fontFamily: 'monospace',
+      theme: { background: '#1e1e1e', foreground: '#d4d4d4' }
+    })
+    const fit = new FitAddon()
+    term.loadAddon(fit)
+    term.open(termRef.current!)
+    fit.fit()
+    xtermRef.current = term
+    fitRef.current = fit
 
-    const fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
+    window.pty.start(term.cols, term.rows)
+    window.pty.onData((data) => term.write(data))
+    term.onData((data) => window.pty.write(data))
 
-    if (terminalRef.current) {
-      term.open(terminalRef.current);
-      fitAddon.fit();
-    }
-
-    // Start PTY
-    window.pty.start();
-
-    // Stream shell output to xterm
-    window.pty.onData((data: string) => {
-      term.write(data);
-    });
-
-    // Send user input to PTY
-    term.onData((data) => {
-      window.pty.write(data);
-    });
-
-    // Debug: verify context capture
+    // Auto-explain after every command
     window.pty.onContextReady((ctx) => {
-      console.log('Context captured:', ctx);
-    });
+      if (!ctx.currentCommand || !ctx.currentOutput) return
+      setPanel({ type: 'loading' })
+      window.ai.explain(ctx).then((res) => {
+        if (res.success) {
+          setPanel({ type: 'explanation', data: res.data as AiResult, command: ctx.currentCommand })
+        } else {
+          setPanel({ type: 'error', message: 'Ollama failed to respond.' })
+        }
+      }).catch(() => setPanel({ type: 'error', message: 'Could not reach Ollama.' }))
+    })
 
-    // Handle resize
-    window.addEventListener("resize", () => {
-      fitAddon.fit();
-    });
+    // Handle @ and # prefix queries
+    window.pty.onAiQuery((payload) => {
+      setPanel({ type: 'loading' })
+      if (payload.type === 'query') {
+        window.ai.query(payload.input, payload.context).then((res) => {
+          if (res.success) {
+            setPanel({ type: 'explanation', data: res.data as AiResult, command: payload.input })
+          } else {
+            setPanel({ type: 'error', message: 'Ollama failed to respond.' })
+          }
+        }).catch(() => setPanel({ type: 'error', message: 'Could not reach Ollama.' }))
+      } else {
+        window.ai.script(payload.input, payload.context).then((res) => {
+          if (res.success) {
+            setPanel({ type: 'script', data: res.data as ScriptResult, request: payload.input })
+          } else {
+            setPanel({ type: 'error', message: 'Script generation failed.' })
+          }
+        }).catch(() => setPanel({ type: 'error', message: 'Could not reach Ollama.' }))
+      }
+    })
 
-    return () => {
-      term.dispose();
-    };
-  }, []);
+    // Inject scrollbar styles
+    const style = document.createElement('style')
+    style.textContent = `
+      * { box-sizing: border-box; }
+      body { margin: 0; overflow: hidden; }
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #444; }
+      .xterm-viewport::-webkit-scrollbar { width: 6px; }
+      .xterm-viewport::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    `
+    document.head.appendChild(style)
+
+    const handleResize = () => fit.fit()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   return (
-    <div style={{ height: "100vh", width: "100vw" }}>
-      <div ref={terminalRef} style={{ height: "100%", width: "100%" }} />
+    <div style={{ display: 'flex', height: '100vh', background: '#1e1e1e', color: '#d4d4d4', fontFamily: 'monospace', overflow: 'hidden' }}>
+      {/* Terminal Panel */}
+      <div style={{ flex: 1, padding: '8px', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ fontSize: '10px', color: '#444', marginBottom: '4px', paddingLeft: '4px', letterSpacing: '0.1em' }}>
+          TERMINAL
+        </div>
+        <div ref={termRef} style={{ flex: 1 }} />
+      </div>
+
+      {/* Divider */}
+      <div style={{ width: '1px', background: '#2a2a2a', flexShrink: 0 }} />
+
+      {/* AI Panel */}
+      <div style={{ width: '420px', display: 'flex', flexDirection: 'column', background: '#1e1e1e', flexShrink: 0 }}>
+        <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid #2a2a2a' }}>
+          <span style={{ fontSize: '10px', color: '#444', letterSpacing: '0.1em' }}>AI ASSISTANT </span>
+          <span style={{ fontSize: '10px', color: '#333' }}>— </span>
+          <span style={{ fontSize: '10px', color: '#3a6a9a' }}>@question</span>
+          <span style={{ fontSize: '10px', color: '#333' }}> or </span>
+          <span style={{ fontSize: '10px', color: '#2e7d6e' }}>#script request</span>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
+          {panel.type === 'idle' && (
+            <div style={{ color: '#383838', fontSize: '12px', marginTop: '60px', textAlign: 'center' }}>
+              Run a command to see an AI explanation.
+            </div>
+          )}
+
+          {panel.type === 'loading' && (
+            <div style={{ color: '#3a6a9a', fontSize: '12px', marginTop: '60px', textAlign: 'center' }}>
+              Analysing...
+            </div>
+          )}
+
+          {panel.type === 'error' && (
+            <div style={{ color: '#8b3333', fontSize: '12px', padding: '10px 12px', background: '#2a1a1a', borderLeft: '2px solid #5a2222', borderRadius: '2px' }}>
+              {panel.message}
+            </div>
+          )}
+
+          {panel.type === 'explanation' && (
+            <div style={{ fontSize: '12px', lineHeight: '1.7' }}>
+              <div style={{ color: '#3a6a9a', marginBottom: '14px', fontSize: '12px' }}>
+                $ {panel.command}
+              </div>
+              <Section title="Explanation" color="#c0c0c0" content={panel.data.explanation} />
+              <Section title="Security Implications" color="#8a6a50" content={panel.data.security_implications} />
+              <Section title="Next Steps" color="#2e7d6e" content={panel.data.next_steps} />
+            </div>
+          )}
+
+          {panel.type === 'script' && (
+            <div style={{ fontSize: '12px', lineHeight: '1.7' }}>
+              <div style={{ color: '#2e7d6e', marginBottom: '14px', fontSize: '12px' }}>
+                # {panel.request}
+              </div>
+              <Section title="Description" color="#c0c0c0" content={panel.data.description} />
+              {panel.data.warning && (
+                <Section title="Warning" color="#8b3333" content={panel.data.warning} />
+              )}
+              <div style={{ marginTop: '14px' }}>
+                <div style={{ color: '#383838', fontSize: '10px', letterSpacing: '0.1em', marginBottom: '6px' }}>SCRIPT — copy and run manually</div>
+                <pre style={{ background: '#191919', padding: '12px', borderRadius: '3px', overflowX: 'auto', color: '#8a6a50', fontSize: '11px', margin: 0, lineHeight: '1.6' }}>
+                  {panel.data.script}
+                </pre>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
-  );
+  )
+}
+
+function Section({ title, color, content }: { title: string; color: string; content: string }) {
+  const displayed = useTypewriter(content)
+  return (
+    <div style={{ marginBottom: '16px' }}>
+      <div style={{ color: '#383838', fontSize: '10px', letterSpacing: '0.1em', marginBottom: '4px' }}>{title.toUpperCase()}</div>
+      <div style={{ color }}>{displayed}</div>
+    </div>
+  )
 }

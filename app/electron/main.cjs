@@ -92,9 +92,14 @@ ipcMain.on("pty:start", (_event, { cols, rows } = {}) => {
 ipcMain.on('pty:write', (_event, data) => {
   // Detect Enter key = command submission
   if (data === '\r') {
+    console.log('CMD BUFFER:', JSON.stringify(sessionContext.currentCommand));
     const cmd = sessionContext.currentCommand.trim();
 
     if (cmd.startsWith('@') || cmd.startsWith('#')) {
+      // Clear the typed line and trigger a fresh prompt
+      mainWindow.webContents.send('pty:data', '\r\x1B[2K\r\n');
+      shellPty.write('\r');
+
       // AI prefix — do NOT send to shell, route to AI instead
       mainWindow.webContents.send('ai:query', {
         type: cmd.startsWith('@') ? 'query' : 'script',
@@ -113,6 +118,7 @@ ipcMain.on('pty:write', (_event, data) => {
     // Normal command — send to shell and start capturing
     isCapturingOutput = true;
     sessionContext.currentOutput = '';
+    sessionContext.currentCommand = '';
   } else if (data === '\x7f') {
     // Backspace
     sessionContext.currentCommand = sessionContext.currentCommand.slice(0, -1);
