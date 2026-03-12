@@ -64,6 +64,7 @@ export default function App() {
 
     // Auto-explain after every command
     window.pty.onContextReady((ctx) => {
+      console.log('Context captured:', ctx)
       if (!ctx.currentCommand || !ctx.currentOutput) return
       setPanel({ type: 'loading' })
       window.ai.explain(ctx).then((res) => {

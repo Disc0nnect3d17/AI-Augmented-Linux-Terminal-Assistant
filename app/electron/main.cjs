@@ -9,6 +9,7 @@ let shellPty;
 // --- Session Context State ---
 let sessionContext = {
   currentCommand: '',
+  lastCommand: '',
   currentOutput: '',
   cwd: process.env.HOME || '/',
   history: []
@@ -61,22 +62,36 @@ ipcMain.on("pty:start", (_event, { cols, rows } = {}) => {
 
     const promptPattern = /\$\s*$|#\s*$/m;
     if (promptPattern.test(clean)) {
-      if (isCapturingOutput && sessionContext.currentCommand) {
-        const snapshot = {
-          currentCommand: sessionContext.currentCommand,
-          currentOutput: sessionContext.currentOutput.trim(),
-          cwd: sessionContext.cwd,
-          history: [...sessionContext.history]
-        };
-
-        if (sessionContext.history[sessionContext.history.length - 1] !== sessionContext.currentCommand) {
-          if (sessionContext.history.length >= 10) sessionContext.history.shift();
-          sessionContext.history.push(sessionContext.currentCommand);
+      // Extract CWD from prompt e.g. "user@host:~/Documents$"
+      const cwdMatch = clean.match(/:([~\/][^\$#]*)\s*[\$#]/);
+      if (cwdMatch) {
+        let cwd = cwdMatch[1].trim();
+        if (cwd.startsWith('~')) {
+          cwd = cwd.replace('~', process.env.HOME || '/home/' + process.env.USER);
         }
+        sessionContext.cwd = cwd;
+      }
+
+      if (isCapturingOutput && sessionContext.lastCommand) {
+        // Capture all values NOW before they get reset
+        const capturedOutput = sessionContext.currentOutput.trim();
+        const capturedCommand = sessionContext.lastCommand;
+        const capturedCwd = sessionContext.cwd;
+
+        if (sessionContext.history[sessionContext.history.length - 1] !== capturedCommand) {
+          if (sessionContext.history.length >= 10) sessionContext.history.shift();
+          sessionContext.history.push(capturedCommand);
+        }
+        const capturedHistory = [...sessionContext.history];
 
         clearTimeout(sessionContext._debounce);
         sessionContext._debounce = setTimeout(() => {
-          mainWindow.webContents.send('context:ready', snapshot);
+          mainWindow.webContents.send('context:ready', {
+            currentCommand: capturedCommand,
+            currentOutput: capturedOutput,
+            cwd: capturedCwd,
+            history: capturedHistory
+          });
         }, 150);
       }
       isCapturingOutput = false;
@@ -92,7 +107,6 @@ ipcMain.on("pty:start", (_event, { cols, rows } = {}) => {
 ipcMain.on('pty:write', (_event, data) => {
   // Detect Enter key = command submission
   if (data === '\r') {
-    console.log('CMD BUFFER:', JSON.stringify(sessionContext.currentCommand));
     const cmd = sessionContext.currentCommand.trim();
 
     if (cmd.startsWith('@') || cmd.startsWith('#')) {
@@ -115,7 +129,8 @@ ipcMain.on('pty:write', (_event, data) => {
       return; // block from reaching PTY
     }
 
-    // Normal command — send to shell and start capturing
+    // Store command for context BEFORE clearing
+    sessionContext.lastCommand = cmd;
     isCapturingOutput = true;
     sessionContext.currentOutput = '';
     sessionContext.currentCommand = '';
