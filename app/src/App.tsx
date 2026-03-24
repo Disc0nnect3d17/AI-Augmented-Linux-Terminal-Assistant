@@ -17,7 +17,7 @@ interface ScriptResult {
 
 type PanelContent =
   | { type: 'idle' }
-  | { type: 'loading' }
+  | { type: 'loading'; command?: string }
   | { type: 'explanation'; data: AiResult; command: string; risk: RiskAssessment }
   | { type: 'script'; data: ScriptResult; request: string; risk: RiskAssessment }
   | { type: 'error'; message: string }
@@ -42,7 +42,12 @@ export default function App() {
   const termRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const [panel, setPanel] = useState<PanelContent>({ type: 'idle' })
+
+  useEffect(() => {
+    if (panelRef.current) panelRef.current.scrollTop = 0
+  }, [panel])
 
   useEffect(() => {
     const term = new Terminal({
@@ -66,7 +71,9 @@ export default function App() {
     window.pty.onContextReady((ctx) => {
       console.log('Context captured:', ctx)
       if (!ctx.currentCommand) return
-      setPanel({ type: 'loading' })
+      const skipCommands = ['cd', 'clear', 'exit', 'history', 'pwd']
+      if (skipCommands.includes(ctx.currentCommand.trim().split(' ')[0])) return
+      setPanel({ type: 'loading', command: ctx.currentCommand })
       window.ai.explain(ctx).then((res) => {
         if (res.success) {
           setPanel({ type: 'explanation', data: res.data as AiResult, command: ctx.currentCommand, risk: res.risk || { tier: 'SAFE' } })
@@ -139,7 +146,7 @@ export default function App() {
           <span style={{ fontSize: '10px', color: '#333' }}> or </span>
           <span style={{ fontSize: '10px', color: '#2e7d6e' }}>#script request</span>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
+        <div ref={panelRef} style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
           {panel.type === 'idle' && (
             <div style={{ color: '#383838', fontSize: '12px', marginTop: '60px', textAlign: 'center' }}>
               Run a command to see an AI explanation.
@@ -148,7 +155,7 @@ export default function App() {
 
           {panel.type === 'loading' && (
             <div style={{ color: '#3a6a9a', fontSize: '12px', marginTop: '60px', textAlign: 'center' }}>
-              Analysing...
+              Analysing {panel.command ? `'${panel.command}'` : ''}...
             </div>
           )}
 
@@ -181,8 +188,27 @@ export default function App() {
                 <Section title="Warning" color="#8b3333" content={panel.data.warning} />
               )}
               <div style={{ marginTop: '14px' }}>
-                <div style={{ color: '#383838', fontSize: '10px', letterSpacing: '0.1em', marginBottom: '6px' }}>SCRIPT — copy and run manually</div>
-                <pre style={{ background: '#191919', padding: '12px', borderRadius: '3px', overflowX: 'auto', color: '#8a6a50', fontSize: '11px', margin: 0, lineHeight: '1.6' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <div style={{ color: '#383838', fontSize: '10px', letterSpacing: '0.1em' }}>SCRIPT — copy and run manually</div>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(panel.data.script)}
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid #333',
+                      color: '#555',
+                      fontSize: '10px',
+                      padding: '2px 8px',
+                      borderRadius: '3px',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace'
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.color = '#888')}
+                    onMouseLeave={e => (e.currentTarget.style.color = '#555')}
+                  >
+                    copy
+                  </button>
+                </div>
+                <pre style={{ background: '#191919', padding: '12px', borderRadius: '3px', overflowX: 'auto', color: '#ce9178', fontSize: '11px', margin: 0, lineHeight: '1.6' }}>
                   {panel.data.script}
                 </pre>
               </div>

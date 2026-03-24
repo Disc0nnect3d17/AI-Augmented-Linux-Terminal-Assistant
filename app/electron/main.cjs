@@ -88,7 +88,12 @@ ipcMain.on("pty:start", (_event, { cols, rows } = {}) => {
         const capturedCommand = sessionContext.lastCommand;
         const capturedCwd = sessionContext.cwd;
 
-        if (sessionContext.history[sessionContext.history.length - 1] !== capturedCommand) {
+        const skipFromHistory = ['cd', 'clear', 'exit', 'history'];
+        const baseCmd = capturedCommand.split(' ')[0];
+        if (
+          !skipFromHistory.includes(baseCmd) &&
+          sessionContext.history[sessionContext.history.length - 1] !== capturedCommand
+        ) {
           if (sessionContext.history.length >= 10) sessionContext.history.shift();
           sessionContext.history.push(capturedCommand);
         }

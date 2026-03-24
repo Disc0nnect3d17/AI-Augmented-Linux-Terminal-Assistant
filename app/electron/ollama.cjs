@@ -24,7 +24,7 @@ Respond in JSON with this exact structure:
 Only return JSON. No markdown, no extra text.`;
   }
 
-  return `You are a cybersecurity terminal assistant. Explain the following command output.
+  return `You are an expert cybersecurity terminal assistant analysing Linux command output.
 
 Command: ${context.currentCommand}
 Working directory: ${context.cwd}
@@ -32,27 +32,35 @@ Recent history:
 ${history}
 
 Terminal output:
-${context.currentOutput}
+${context.currentOutput || '(no output — command may have failed or produced nothing)'}
 
-Respond in JSON with this exact structure:
-{"explanation": "...", "security_implications": "...", "next_steps": "..."}
+Provide a concise technical analysis. Respond in JSON:
+{"explanation": "what the command did and what the output means", "security_implications": "specific security risks or observations, or 'No significant security implications' if none", "next_steps": "specific actionable next steps for a cybersecurity workflow"}
 Only return JSON. No markdown, no extra text.`;
 }
 
 function buildScriptPrompt(request, context) {
-  return `You are a cybersecurity terminal assistant. Generate a bash script for the following request.
+  return `You are an expert cybersecurity and Linux systems engineer. Generate a correct, working bash script for the following request.
 
 Request: ${request}
 Working directory: ${context.cwd}
 
+Rules:
+- Write a complete, functional bash script
+- Use best practices and correct syntax
+- Include comments explaining each step
+- Do NOT suggest running the script automatically
+- If the request involves network scanning, use nmap
+- If the request involves process inspection, use ps, top, or lsof
+
 Respond in JSON with this exact structure:
-{"script": "...", "description": "...", "warning": "..."}
+{"script": "#!/bin/bash\\n# script here", "description": "one sentence description", "warning": "any safety warning or empty string"}
 Only return JSON. No markdown, no extra text.`;
 }
 
 async function queryOllama(prompt) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+  const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout
 
   try {
     const response = await fetch(OLLAMA_URL, {
@@ -77,7 +85,11 @@ async function queryOllama(prompt) {
 }
 
 async function explainOutput(context) {
-  const prompt = buildPrompt(context);
+  const truncatedContext = {
+    ...context,
+    currentOutput: context.currentOutput.slice(0, 2000)
+  }
+  const prompt = buildPrompt(truncatedContext);
   return queryOllama(prompt);
 }
 
