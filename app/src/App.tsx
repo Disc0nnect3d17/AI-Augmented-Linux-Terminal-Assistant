@@ -18,8 +18,8 @@ interface ScriptResult {
 type PanelContent =
   | { type: 'idle' }
   | { type: 'loading' }
-  | { type: 'explanation'; data: AiResult; command: string }
-  | { type: 'script'; data: ScriptResult; request: string }
+  | { type: 'explanation'; data: AiResult; command: string; risk: RiskAssessment }
+  | { type: 'script'; data: ScriptResult; request: string; risk: RiskAssessment }
   | { type: 'error'; message: string }
 
 function useTypewriter(text: string, speed = 18) {
@@ -65,11 +65,11 @@ export default function App() {
     // Auto-explain after every command
     window.pty.onContextReady((ctx) => {
       console.log('Context captured:', ctx)
-      if (!ctx.currentCommand || !ctx.currentOutput) return
+      if (!ctx.currentCommand) return
       setPanel({ type: 'loading' })
       window.ai.explain(ctx).then((res) => {
         if (res.success) {
-          setPanel({ type: 'explanation', data: res.data as AiResult, command: ctx.currentCommand })
+          setPanel({ type: 'explanation', data: res.data as AiResult, command: ctx.currentCommand, risk: res.risk || { tier: 'SAFE' } })
         } else {
           setPanel({ type: 'error', message: 'Ollama failed to respond.' })
         }
@@ -82,7 +82,7 @@ export default function App() {
       if (payload.type === 'query') {
         window.ai.query(payload.input, payload.context).then((res) => {
           if (res.success) {
-            setPanel({ type: 'explanation', data: res.data as AiResult, command: payload.input })
+            setPanel({ type: 'explanation', data: res.data as AiResult, command: payload.input, risk: res.risk || { tier: 'SAFE' } })
           } else {
             setPanel({ type: 'error', message: 'Ollama failed to respond.' })
           }
@@ -90,7 +90,7 @@ export default function App() {
       } else {
         window.ai.script(payload.input, payload.context).then((res) => {
           if (res.success) {
-            setPanel({ type: 'script', data: res.data as ScriptResult, request: payload.input })
+            setPanel({ type: 'script', data: res.data as ScriptResult, request: payload.input, risk: res.risk || { tier: 'SAFE' } })
           } else {
             setPanel({ type: 'error', message: 'Script generation failed.' })
           }
@@ -163,6 +163,7 @@ export default function App() {
               <div style={{ color: '#3a6a9a', marginBottom: '14px', fontSize: '12px' }}>
                 $ {panel.command}
               </div>
+              <RiskBanner risk={panel.risk} />
               <Section title="Explanation" color="#c0c0c0" content={panel.data.explanation} />
               <Section title="Security Implications" color="#8a6a50" content={panel.data.security_implications} />
               <Section title="Next Steps" color="#2e7d6e" content={panel.data.next_steps} />
@@ -174,6 +175,7 @@ export default function App() {
               <div style={{ color: '#2e7d6e', marginBottom: '14px', fontSize: '12px' }}>
                 # {panel.request}
               </div>
+              <RiskBanner risk={panel.risk} />
               <Section title="Description" color="#c0c0c0" content={panel.data.description} />
               {panel.data.warning && (
                 <Section title="Warning" color="#8b3333" content={panel.data.warning} />
@@ -188,6 +190,24 @@ export default function App() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function RiskBanner({ risk }: { risk: { tier: string; message?: string } }) {
+  if (risk.tier === 'SAFE') return null
+  const isDanger = risk.tier === 'DANGER'
+  return (
+    <div style={{
+      padding: '8px 12px',
+      marginBottom: '14px',
+      borderLeft: `2px solid ${isDanger ? '#8b2222' : '#7a6000'}`,
+      background: isDanger ? '#2a1010' : '#1e1a00',
+      color: isDanger ? '#cc4444' : '#aa8800',
+      fontSize: '11px',
+      lineHeight: '1.5'
+    }}>
+      {isDanger ? 'DANGER' : 'CAUTION'} — {risk.message}
     </div>
   )
 }

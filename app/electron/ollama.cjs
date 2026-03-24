@@ -51,25 +51,28 @@ Only return JSON. No markdown, no extra text.`;
 }
 
 async function queryOllama(prompt) {
-  const response = await fetch(OLLAMA_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: MODEL,
-      prompt,
-      stream: false
-    })
-  });
-
-  if (!response.ok) throw new Error(`Ollama error: ${response.status}`);
-
-  const data = await response.json();
-  const text = data.response.trim();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
   try {
-    return { success: true, data: JSON.parse(text) };
-  } catch {
-    return { success: true, data: { explanation: text, security_implications: '', next_steps: '' } };
+    const response = await fetch(OLLAMA_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: MODEL, prompt, stream: false }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    if (!response.ok) throw new Error(`Ollama error: ${response.status}`);
+    const data = await response.json();
+    const text = data.response.trim();
+    try {
+      return { success: true, data: JSON.parse(text) };
+    } catch {
+      return { success: true, data: { explanation: text, security_implications: '', next_steps: '' } };
+    }
+  } catch (err) {
+    clearTimeout(timeout);
+    return { success: false, error: err.message };
   }
 }
 

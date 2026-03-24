@@ -37,6 +37,7 @@ interface AiScriptResult {
 interface AiResponse<T> {
   success: boolean;
   data: T;
+  risk?: RiskAssessment;
 }
 
 interface AiApi {
@@ -46,6 +47,11 @@ interface AiApi {
 }
 
 declare global {
+  interface RiskAssessment {
+    tier: 'SAFE' | 'CAUTION' | 'DANGER';
+    message?: string;
+  }
+
   interface Window {
     pty: PtyApi;
     ai: AiApi;

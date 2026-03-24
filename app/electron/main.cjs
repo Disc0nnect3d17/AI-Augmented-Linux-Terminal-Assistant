@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const pty = require("node-pty");
 const ollama = require('./ollama.cjs');
+const safeguard = require('./safeguard.cjs');
 
 let mainWindow;
 let shellPty;
@@ -59,6 +60,15 @@ ipcMain.on("pty:start", (_event, { cols, rows } = {}) => {
       .replace(/\x1B\[[0-9;]*[mGKHFJl]/g, '')
       .replace(/\x1B\[\?[0-9;]*[hl]/g, '')
       .replace(/\r/g, '');
+
+    // Skip password prompts — they don't end with $ or # and would hang context capture
+    const passwordPattern = /\[sudo\]\s+password|Password:/i;
+    if (passwordPattern.test(clean)) {
+      isCapturingOutput = false;
+      sessionContext.currentOutput = '';
+      sessionContext.lastCommand = '';
+      return;
+    }
 
     const promptPattern = /\$\s*$|#\s*$/m;
     if (promptPattern.test(clean)) {
@@ -148,13 +158,25 @@ ipcMain.on('pty:write', (_event, data) => {
 ipcMain.handle('context:get', () => ({ ...sessionContext }));
 
 ipcMain.handle('ai:explain', async (_event, context) => {
-  return ollama.explainOutput(context);
+  const result = await ollama.explainOutput(context);
+  if (result.success) {
+    result.risk = safeguard.assessRisk(context.currentCommand, result.data);
+  }
+  return result;
 });
 
 ipcMain.handle('ai:query', async (_event, { input, context }) => {
-  return ollama.answerQuery(input, context);
+  const result = await ollama.answerQuery(input, context);
+  if (result.success) {
+    result.risk = safeguard.assessRisk(input, result.data);
+  }
+  return result;
 });
 
 ipcMain.handle('ai:script', async (_event, { input, context }) => {
-  return ollama.generateScript(input, context);
+  const result = await ollama.generateScript(input, context);
+  if (result.success) {
+    result.risk = safeguard.assessRisk(input, result.data);
+  }
+  return result;
 });
