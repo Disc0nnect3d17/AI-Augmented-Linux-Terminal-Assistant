@@ -7,20 +7,19 @@ function buildPrompt(context, userQuery = null) {
     : 'No previous commands';
 
   if (userQuery) {
-    return `You are a cybersecurity terminal assistant. Answer this question using the terminal session context below.
+    return `You are an expert cybersecurity terminal assistant. Answer the following question accurately using the terminal session context provided. Do not guess or hallucinate — if you don't know, say so.
 
 Question: ${userQuery}
 
-Command: ${context.currentCommand}
+Current session context:
+Command just run: ${context.currentCommand}
 Working directory: ${context.cwd}
-Recent history:
-${history}
+Recent history: ${history}
+Last terminal output:
+${context.currentOutput.slice(0, 1000)}
 
-Terminal output:
-${context.currentOutput}
-
-Respond in JSON with this exact structure:
-{"explanation": "...", "security_implications": "...", "next_steps": "..."}
+Respond in JSON:
+{"explanation": "direct answer to the question", "security_implications": "relevant security context", "next_steps": "recommended actions"}
 Only return JSON. No markdown, no extra text.`;
   }
 
@@ -60,7 +59,7 @@ Only return JSON. No markdown, no extra text.`;
 
 async function queryOllama(prompt) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout
+  const timeout = setTimeout(() => controller.abort(), 60000);
 
   try {
     const response = await fetch(OLLAMA_URL, {
@@ -87,7 +86,7 @@ async function queryOllama(prompt) {
 async function explainOutput(context) {
   const truncatedContext = {
     ...context,
-    currentOutput: context.currentOutput.slice(0, 2000)
+    currentOutput: context.currentOutput.slice(0, 1000)
   }
   const prompt = buildPrompt(truncatedContext);
   return queryOllama(prompt);
