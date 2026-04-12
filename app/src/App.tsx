@@ -44,6 +44,15 @@ export default function App() {
   const fitRef = useRef<FitAddon | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const [panel, setPanel] = useState<PanelContent>({ type: 'idle' })
+  const [layout, setLayout] = useState<'right' | 'left' | 'top' | 'bottom'>(() => {
+    return (localStorage.getItem('ai-panel-layout') as any) || 'right'
+  })
+
+  const setAndSaveLayout = (l: 'right' | 'left' | 'top' | 'bottom') => {
+    setLayout(l)
+    localStorage.setItem('ai-panel-layout', l)
+    setTimeout(() => fitRef.current?.fit(), 50)
+  }
 
   useEffect(() => {
     if (panelRef.current) panelRef.current.scrollTop = 0
@@ -124,27 +133,65 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  const isHorizontal = layout === 'right' || layout === 'left'
+
+  const layoutButtons = (
+    <div style={{ display: 'flex', gap: '4px' }}>
+      {(['left', 'right', 'top', 'bottom'] as const).map(pos => (
+        <button
+          key={pos}
+          onClick={() => setAndSaveLayout(pos)}
+          style={{
+            background: layout === pos ? '#3a3a3a' : 'transparent',
+            border: '1px solid ' + (layout === pos ? '#555' : '#2a2a2a'),
+            color: layout === pos ? '#aaa' : '#444',
+            borderRadius: '3px',
+            padding: '2px 6px',
+            fontSize: '11px',
+            cursor: 'pointer',
+            lineHeight: 1
+          }}
+        >
+          {pos === 'left' ? '⬅' : pos === 'right' ? '➡' : pos === 'top' ? '⬆' : '⬇'}
+        </button>
+      ))}
+    </div>
+  )
+
   return (
-    <div style={{ display: 'flex', height: '100vh', background: '#1e1e1e', color: '#d4d4d4', fontFamily: 'monospace', overflow: 'hidden' }}>
+    <div style={{
+      display: 'flex',
+      flexDirection: layout === 'top' ? 'column-reverse' : layout === 'bottom' ? 'column' : layout === 'left' ? 'row-reverse' : 'row',
+      height: '100vh',
+      background: '#1e1e1e',
+      color: '#d4d4d4',
+      fontFamily: 'monospace',
+      overflow: 'hidden'
+    }}>
       {/* Terminal Panel */}
-      <div style={{ flex: 1, padding: '8px', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, padding: '8px', minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ fontSize: '10px', color: '#444', marginBottom: '4px', paddingLeft: '4px', letterSpacing: '0.1em' }}>
           TERMINAL
         </div>
-        <div ref={termRef} style={{ flex: 1 }} />
+        <div ref={termRef} style={{ flex: 1, minHeight: 0 }} />
       </div>
 
       {/* Divider */}
-      <div style={{ width: '1px', background: '#2a2a2a', flexShrink: 0 }} />
+      <div style={{ [isHorizontal ? 'width' : 'height']: '1px', background: '#2a2a2a', flexShrink: 0 }} />
 
       {/* AI Panel */}
-      <div style={{ width: '420px', display: 'flex', flexDirection: 'column', background: '#1e1e1e', flexShrink: 0 }}>
-        <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid #2a2a2a' }}>
-          <span style={{ fontSize: '10px', color: '#444', letterSpacing: '0.1em' }}>AI ASSISTANT </span>
-          <span style={{ fontSize: '10px', color: '#333' }}>— </span>
-          <span style={{ fontSize: '10px', color: '#3a6a9a' }}>@question</span>
-          <span style={{ fontSize: '10px', color: '#333' }}> or </span>
-          <span style={{ fontSize: '10px', color: '#2e7d6e' }}>#script request</span>
+      <div style={{
+        [isHorizontal ? 'width' : 'height']: isHorizontal ? '420px' : '45vh',
+        display: 'flex',
+        flexDirection: 'column',
+        background: '#1e1e1e',
+        flexShrink: 0
+      }}>
+        <div style={{ padding: '8px 14px', borderBottom: '1px solid #2a2a2a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+          <div style={{ fontSize: '10px', color: '#444', letterSpacing: '0.1em', flexShrink: 0 }}>
+            AI ASSISTANT — <span style={{ color: '#3a6a9a' }}>@question</span> <span style={{ color: '#333' }}>|</span> <span style={{ color: '#2e7d6e' }}>#script</span>
+          </div>
+          {layoutButtons}
         </div>
         <div ref={panelRef} style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
           {panel.type === 'idle' && (
