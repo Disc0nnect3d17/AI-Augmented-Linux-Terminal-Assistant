@@ -197,11 +197,12 @@ export default function App() {
     `
     document.head.appendChild(style)
 
-    const handleResize = () => fit.fit()
-    window.addEventListener('resize', handleResize)
+    const ro = new ResizeObserver(() => fitRef.current?.fit())
+    ro.observe(termRef.current!)
+
     return () => {
-      window.removeEventListener('resize', handleResize)
       window.removeEventListener('click', dismissMenu)
+      ro.disconnect()
     }
   }, [])
 
@@ -258,7 +259,7 @@ export default function App() {
         <div style={{ fontSize: '10px', color: '#444', marginBottom: '4px', paddingLeft: '4px', letterSpacing: '0.1em' }}>
           TERMINAL
         </div>
-        <div ref={termRef} style={{ flex: 1, minHeight: 0 }} />
+        <div ref={termRef} style={{ flex: 1, minHeight: 0, minWidth: 0 }} />
       </div>
 
       {/* Divider */}
