@@ -18,6 +18,8 @@ let sessionContext = {
 };
 
 let isCapturingOutput = false;
+let awaitingPassword = false;
+let skipOnePrompt = false;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -62,9 +64,9 @@ ipcMain.on("pty:start", (_event, { cols, rows } = {}) => {
       .replace(/\x1B\[\?[0-9;]*[hl]/g, '')
       .replace(/\r/g, '');
 
-    // Skip password prompts — they don't end with $ or # and would hang context capture
-    const passwordPattern = /\[sudo\]\s+password|Password:/i;
-    if (passwordPattern.test(clean)) {
+    // Detect password prompts
+    if (/\[sudo\] password/i.test(clean) || /password for/i.test(clean)) {
+      awaitingPassword = true;
       isCapturingOutput = false;
       sessionContext.currentOutput = '';
       sessionContext.lastCommand = '';
@@ -81,6 +83,11 @@ ipcMain.on("pty:start", (_event, { cols, rows } = {}) => {
           cwd = cwd.replace('~', process.env.HOME || '/home/' + process.env.USER);
         }
         sessionContext.cwd = cwd;
+      }
+
+      if (skipOnePrompt) {
+        skipOnePrompt = false;
+        // fall through — sudo output is already in currentOutput, analyse normally
       }
 
       if (isCapturingOutput && sessionContext.lastCommand) {
@@ -124,6 +131,13 @@ ipcMain.on('pty:write', (_event, data) => {
   // Detect Enter key = command submission
   if (data === '\r') {
     const cmd = sessionContext.currentCommand.trim();
+
+    if (awaitingPassword) {
+      awaitingPassword = false;
+      skipOnePrompt = true;
+      shellPty.write(data);
+      return;
+    }
 
     if (cmd.startsWith('@') || cmd.startsWith('#')) {
       // Clear the typed line and trigger a fresh prompt
