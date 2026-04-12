@@ -6,7 +6,8 @@ contextBridge.exposeInMainWorld('pty', {
   onData: (cb) => ipcRenderer.on('pty:data', (_, data) => cb(data)),
   onContextReady: (cb) => ipcRenderer.on('context:ready', (_, ctx) => cb(ctx)),
   onAiQuery: (cb) => ipcRenderer.on('ai:query', (_, payload) => cb(payload)),
-  getContext: () => ipcRenderer.invoke('context:get')
+  getContext: () => ipcRenderer.invoke('context:get'),
+  resize: (cols, rows) => ipcRenderer.send('pty:resize', { cols, rows })
 });
 
 contextBridge.exposeInMainWorld('ai', {

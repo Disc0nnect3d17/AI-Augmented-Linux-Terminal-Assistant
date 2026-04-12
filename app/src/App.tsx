@@ -115,13 +115,15 @@ export default function App() {
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(termRef.current!)
-    fit.fit()
     xtermRef.current = term
     fitRef.current = fit
 
-    window.pty.start(term.cols, term.rows)
-    window.pty.onData((data) => term.write(data))
-    term.onData((data) => window.pty.write(data))
+    requestAnimationFrame(() => {
+      fit.fit()
+      window.pty.start(term.cols, term.rows)
+      window.pty.onData((data: string) => term.write(data))
+      term.onData((data: string) => window.pty.write(data))
+    })
 
     // Right-click context menu on selected text
     termRef.current!.addEventListener('contextmenu', (e) => {
@@ -197,11 +199,19 @@ export default function App() {
     `
     document.head.appendChild(style)
 
-    const ro = new ResizeObserver(() => fitRef.current?.fit())
+    let resizeTimer: ReturnType<typeof setTimeout>
+    const ro = new ResizeObserver(() => {
+      clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => {
+        fit.fit()
+        window.pty.resize(term.cols, term.rows)
+      }, 50)
+    })
     ro.observe(termRef.current!)
 
     return () => {
       window.removeEventListener('click', dismissMenu)
+      clearTimeout(resizeTimer)
       ro.disconnect()
     }
   }, [])
@@ -259,7 +269,7 @@ export default function App() {
         <div style={{ fontSize: '10px', color: '#444', marginBottom: '4px', paddingLeft: '4px', letterSpacing: '0.1em' }}>
           TERMINAL
         </div>
-        <div ref={termRef} style={{ flex: 1, minHeight: 0, minWidth: 0 }} />
+        <div ref={termRef} style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden' }} />
       </div>
 
       {/* Divider */}

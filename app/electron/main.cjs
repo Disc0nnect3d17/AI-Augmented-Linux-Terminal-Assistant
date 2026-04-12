@@ -163,6 +163,10 @@ ipcMain.on('pty:write', (_event, data) => {
 
 ipcMain.handle('context:get', () => ({ ...sessionContext }));
 
+ipcMain.on('pty:resize', (_event, { cols, rows }) => {
+  if (shellPty) shellPty.resize(cols, rows)
+});
+
 ipcMain.handle('ai:explain', async (_event, context) => {
   const result = await ollama.explainOutput(context);
   if (result.success) {

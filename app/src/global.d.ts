@@ -20,6 +20,7 @@ interface PtyApi {
   onContextReady: (callback: (ctx: SessionContext) => void) => void;
   onAiQuery: (callback: (payload: AiQueryPayload) => void) => void;
   getContext: () => Promise<SessionContext>;
+  resize: (cols: number, rows: number) => void;
 }
 
 interface AiExplainResult {
