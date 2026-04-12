@@ -44,7 +44,9 @@ export default function App() {
   const fitRef = useRef<FitAddon | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const prefixActiveRef = useRef(false)
+  const lastContextRef = useRef<any>(null)
   const [panel, setPanel] = useState<PanelContent>({ type: 'idle' })
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; text: string } | null>(null)
   const [layout, setLayout] = useState<'right' | 'left' | 'top' | 'bottom'>(() => {
     return (localStorage.getItem('ai-panel-layout') as any) || 'right'
   })
@@ -77,8 +79,20 @@ export default function App() {
     window.pty.onData((data) => term.write(data))
     term.onData((data) => window.pty.write(data))
 
+    // Right-click context menu on selected text
+    termRef.current!.addEventListener('contextmenu', (e) => {
+      e.preventDefault()
+      const selection = term.getSelection().trim()
+      if (!selection) return
+      setContextMenu({ x: e.clientX, y: e.clientY, text: selection })
+    })
+
+    const dismissMenu = () => setContextMenu(null)
+    window.addEventListener('click', dismissMenu)
+
     // Auto-explain after every command
     window.pty.onContextReady((ctx) => {
+      lastContextRef.current = ctx
       if (prefixActiveRef.current) return
       console.log('Context captured:', ctx)
       if (!ctx.currentCommand) return
@@ -141,8 +155,24 @@ export default function App() {
 
     const handleResize = () => fit.fit()
     window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      window.removeEventListener('click', dismissMenu)
+    }
   }, [])
+
+  const askAboutSelection = (text: string) => {
+    setContextMenu(null)
+    setPanel({ type: 'loading' })
+    const ctx = lastContextRef.current || { currentCommand: '', currentOutput: '', cwd: '~', history: [] }
+    window.ai.query(text, ctx).then((res) => {
+      if (res.success) {
+        setPanel({ type: 'explanation', data: res.data as AiResult, command: text, risk: res.risk || { tier: 'SAFE' } })
+      } else {
+        setPanel({ type: 'error', message: 'Ollama failed to respond.' })
+      }
+    }).catch(() => setPanel({ type: 'error', message: 'Could not reach Ollama.' }))
+  }
 
   const isHorizontal = layout === 'right' || layout === 'left'
 
@@ -274,6 +304,36 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {contextMenu && (
+        <div style={{
+          position: 'fixed',
+          top: contextMenu.y,
+          left: contextMenu.x,
+          background: '#252525',
+          border: '1px solid #333',
+          borderRadius: '4px',
+          padding: '4px 0',
+          zIndex: 9999,
+          minWidth: '160px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
+        }}>
+          <div
+            onClick={() => askAboutSelection(contextMenu.text)}
+            style={{
+              padding: '6px 14px',
+              fontSize: '12px',
+              color: '#ccc',
+              cursor: 'pointer',
+              fontFamily: 'monospace'
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#2e2e2e')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            Ask AI about selection
+          </div>
+        </div>
+      )}
     </div>
   )
 }
