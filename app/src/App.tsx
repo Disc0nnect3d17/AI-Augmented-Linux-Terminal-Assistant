@@ -43,6 +43,7 @@ export default function App() {
   const xtermRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  const prefixActiveRef = useRef(false)
   const [panel, setPanel] = useState<PanelContent>({ type: 'idle' })
   const [layout, setLayout] = useState<'right' | 'left' | 'top' | 'bottom'>(() => {
     return (localStorage.getItem('ai-panel-layout') as any) || 'right'
@@ -78,6 +79,7 @@ export default function App() {
 
     // Auto-explain after every command
     window.pty.onContextReady((ctx) => {
+      if (prefixActiveRef.current) return
       console.log('Context captured:', ctx)
       if (!ctx.currentCommand) return
       const skipCommands = ['cd', 'clear', 'exit', 'history', 'pwd']
@@ -94,23 +96,32 @@ export default function App() {
 
     // Handle @ and # prefix queries
     window.pty.onAiQuery((payload) => {
+      prefixActiveRef.current = true
       setPanel({ type: 'loading' })
       if (payload.type === 'query') {
         window.ai.query(payload.input, payload.context).then((res) => {
+          prefixActiveRef.current = false
           if (res.success) {
             setPanel({ type: 'explanation', data: res.data as AiResult, command: payload.input, risk: res.risk || { tier: 'SAFE' } })
           } else {
             setPanel({ type: 'error', message: 'Ollama failed to respond.' })
           }
-        }).catch(() => setPanel({ type: 'error', message: 'Could not reach Ollama.' }))
+        }).catch(() => {
+          prefixActiveRef.current = false
+          setPanel({ type: 'error', message: 'Could not reach Ollama.' })
+        })
       } else {
         window.ai.script(payload.input, payload.context).then((res) => {
+          prefixActiveRef.current = false
           if (res.success) {
             setPanel({ type: 'script', data: res.data as ScriptResult, request: payload.input, risk: res.risk || { tier: 'SAFE' } })
           } else {
             setPanel({ type: 'error', message: 'Script generation failed.' })
           }
-        }).catch(() => setPanel({ type: 'error', message: 'Could not reach Ollama.' }))
+        }).catch(() => {
+          prefixActiveRef.current = false
+          setPanel({ type: 'error', message: 'Could not reach Ollama.' })
+        })
       }
     })
 
