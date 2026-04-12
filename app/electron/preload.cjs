@@ -14,3 +14,7 @@ contextBridge.exposeInMainWorld('ai', {
   query: (input, ctx) => ipcRenderer.invoke('ai:query', { input, context: ctx }),
   script: (input, ctx) => ipcRenderer.invoke('ai:script', { input, context: ctx })
 });
+
+contextBridge.exposeInMainWorld('script', {
+  save: (script, filename, cwd) => ipcRenderer.invoke('script:save', { script, filename, cwd })
+});

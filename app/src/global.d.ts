@@ -52,8 +52,13 @@ declare global {
     message?: string;
   }
 
+  interface ScriptApi {
+    save: (script: string, filename: string, cwd: string) => Promise<{ success: boolean; path?: string; filename?: string; error?: string }>
+  }
+
   interface Window {
     pty: PtyApi;
     ai: AiApi;
+    script: ScriptApi;
   }
 }

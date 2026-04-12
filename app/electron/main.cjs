@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const pty = require("node-pty");
 const ollama = require('./ollama.cjs');
 const safeguard = require('./safeguard.cjs');
@@ -184,4 +185,23 @@ ipcMain.handle('ai:script', async (_event, { input, context }) => {
     result.risk = safeguard.assessRisk(input, result.data);
   }
   return result;
+});
+
+ipcMain.handle('script:save', async (_event, { script, filename, cwd }) => {
+  try {
+    const resolvedCwd = cwd.startsWith('~')
+      ? cwd.replace('~', require('os').homedir())
+      : cwd
+    const safeName = filename
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 60)
+    const fullName = safeName.endsWith('.sh') ? safeName : safeName + '.sh'
+    const filePath = path.join(resolvedCwd, fullName)
+    fs.writeFileSync(filePath, script, { mode: 0o755 })
+    return { success: true, path: filePath, filename: fullName }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
 });

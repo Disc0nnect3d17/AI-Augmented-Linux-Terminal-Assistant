@@ -22,6 +22,50 @@ type PanelContent =
   | { type: 'script'; data: ScriptResult; request: string; risk: RiskAssessment }
   | { type: 'error'; message: string }
 
+function ScriptSaveButton({ script, request, cwd }: { script: string; request: string; cwd: string }) {
+  const [saved, setSaved] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSave = async () => {
+    const res = await window.script.save(script, request, cwd)
+    if (res.success) {
+      setSaved(res.path!)
+    } else {
+      setError(res.error || 'Failed to save')
+    }
+  }
+
+  if (saved) {
+    return (
+      <div style={{ marginTop: '10px', fontSize: '11px', color: '#4ec9b0' }}>
+        ✓ Saved as {saved}
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ marginTop: '10px' }}>
+      <button
+        onClick={handleSave}
+        style={{
+          background: '#1a3a2a',
+          border: '1px solid #2e7d6e',
+          color: '#4ec9b0',
+          padding: '6px 14px',
+          borderRadius: '4px',
+          fontSize: '11px',
+          cursor: 'pointer',
+          fontFamily: 'monospace',
+          letterSpacing: '0.05em'
+        }}
+      >
+        Create Script
+      </button>
+      {error && <span style={{ marginLeft: '10px', color: '#e06c75', fontSize: '11px' }}>{error}</span>}
+    </div>
+  )
+}
+
 function useTypewriter(text: string, speed = 18) {
   const [displayed, setDisplayed] = useState('')
   useEffect(() => {
@@ -300,6 +344,11 @@ export default function App() {
                   {panel.data.script}
                 </pre>
               </div>
+              <ScriptSaveButton
+                script={panel.data.script}
+                request={panel.request}
+                cwd={lastContextRef.current?.cwd || '~'}
+              />
             </div>
           )}
         </div>
