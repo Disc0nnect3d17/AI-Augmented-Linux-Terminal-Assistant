@@ -107,13 +107,17 @@ ipcMain.on("pty:start", (_event, { cols, rows } = {}) => {
         }
         const capturedHistory = [...sessionContext.history];
 
+        // ── AREA 1: Structured Session Context Object ──────────────────────────
+        // This is the single structured object passed to the AI on every request.
+        // It answers RQ2: "how does the system maintain terminal awareness?"
+        // Each field is captured from live shell state — nothing is fabricated.
         clearTimeout(sessionContext._debounce);
         sessionContext._debounce = setTimeout(() => {
           mainWindow.webContents.send('context:ready', {
-            currentCommand: capturedCommand,
-            currentOutput: capturedOutput,
-            cwd: capturedCwd,
-            history: capturedHistory
+            currentCommand: capturedCommand, // the exact command the user just ran
+            currentOutput: capturedOutput,   // raw terminal output that followed the command
+            cwd: capturedCwd,               // working directory at the moment of execution
+            history: capturedHistory        // rolling window of the last 10 shell commands — enables cross-command reasoning (e.g. ps aux referencing a prior nmap scan)
           });
         }, 150);
       }
@@ -139,24 +143,28 @@ ipcMain.on('pty:write', (_event, data) => {
       return;
     }
 
+    // ── AREA 3: Prefix Router ──────────────────────────────────────────────
+    // Intercepts @ (question) and # (script) prefixes before node-pty sees them.
+    // This is the exact line that means @ queries NEVER touch the shell —
+    // they are caught here in the Electron main process before node-pty sees them.
     if (cmd.startsWith('@') || cmd.startsWith('#')) {
-      // Clear the typed line and trigger a fresh prompt
+      // Erase the typed prefix line from the terminal display — it never reached the shell
       mainWindow.webContents.send('pty:data', '\r\x1B[2K\r\n');
-      shellPty.write('\r');
+      shellPty.write('\r'); // send a blank Enter to keep the shell prompt clean
 
-      // AI prefix — do NOT send to shell, route to AI instead
+      // Route the input to the renderer's AI handler, NOT to the PTY
       mainWindow.webContents.send('ai:query', {
-        type: cmd.startsWith('@') ? 'query' : 'script',
-        input: cmd.slice(1).trim(),
+        type: cmd.startsWith('@') ? 'query' : 'script', // @ → freeform Q&A, # → bash script generation
+        input: cmd.slice(1).trim(),                      // strip the prefix character before sending to AI
         context: {
-          currentCommand: sessionContext.currentCommand,
-          currentOutput: sessionContext.currentOutput,
-          cwd: sessionContext.cwd,
-          history: [...sessionContext.history]
+          currentCommand: sessionContext.currentCommand, // what the user had typed
+          currentOutput: sessionContext.currentOutput,   // any output already on screen
+          cwd: sessionContext.cwd,                       // working directory for grounding the response
+          history: [...sessionContext.history]           // prior commands for multi-turn reasoning
         }
       });
       sessionContext.currentCommand = '';
-      return; // block from reaching PTY
+      return; // ← hard stop: the PTY never sees this input
     }
 
     // Store command for context BEFORE clearing

@@ -1,11 +1,21 @@
+// ── AREA 4: Ollama Prompt Construction ────────────────────────────────────
+// Ollama runs locally at port 11434. All inference stays on-device — no data
+// leaves the machine. MODEL is the local llama3.2 checkpoint.
 const OLLAMA_URL = 'http://localhost:11434/api/generate';
 const MODEL = 'llama3.2';
 
+// Assembles the full prompt string that gets sent to Ollama.
+// This is where the structured context object from Area 1 is injected into
+// natural language — the implementation of structured prompting from the literature review.
+// Two variants: auto-explain (no userQuery) and @-prefix Q&A (with userQuery).
 function buildPrompt(context, userQuery = null) {
+  // Flatten the history array into newline-separated text for the prompt
   const history = context.history.length > 0
     ? context.history.join('\n')
     : 'No previous commands';
 
+  // Variant A — @-prefix Q&A: user asked a specific question
+  // The context object fields are injected directly as labelled sections
   if (userQuery) {
     return `You are an expert cybersecurity terminal assistant. Answer the following question accurately using the terminal session context provided. Do not guess or hallucinate — if you don't know, say so.
 
@@ -21,8 +31,12 @@ ${context.currentOutput.slice(0, 1000)}
 Respond in JSON:
 {"explanation": "direct answer to the question", "security_implications": "relevant security context", "next_steps": "recommended actions"}
 Only return JSON. No markdown, no extra text.`;
+// ↑ Constrained JSON-only output format prevents free-text drift and makes
+//   the response trivially parseable — parseability was a key design requirement.
   }
 
+  // Variant B — auto-explain: triggered automatically after every command
+  // Same context fields, different task framing (analysis vs Q&A)
   return `You are an expert cybersecurity terminal assistant analysing Linux command output.
 
 Command: ${context.currentCommand}
